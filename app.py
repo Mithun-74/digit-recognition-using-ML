@@ -1,53 +1,28 @@
-# app.py
 import os
-import base64
-import io
-import numpy as np
-from PIL import Image, ImageOps
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import tensorflow as tf
+import numpy as np
+from PIL import Image
+import io
+import base64
 
 app = Flask(__name__)
+CORS(app)
 
-# Load trained model
+# Load model once when app starts
 model = tf.keras.models.load_model("mnist_model.h5")
-
-def preprocess_image(image_data):
-    # Decode base64 image
-    image_data = image_data.split(",")[1]  # remove "data:image/png;base64,"
-    image_bytes = base64.b64decode(image_data)
-    img = Image.open(io.BytesIO(image_bytes)).convert("L")  # convert to grayscale
-
-    # Invert colors (canvas = black background, MNIST = white background)
-    img = ImageOps.invert(img)
-
-    # Resize to 28x28 (MNIST format)
-    img = img.resize((28, 28))
-
-    # Convert to numpy array
-    img_array = np.array(img) / 255.0
-
-    # Reshape for model (1, 28, 28)
-    img_array = img_array.reshape(1, 28, 28)
-
-    return img_array
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.get_json()
-    image_data = data["image"]
-
-    processed = preprocess_image(image_data)
-    predictions = model.predict(processed)
-    digit = int(np.argmax(predictions))
-
-    return jsonify({
-        "prediction": digit,
-        "probabilities": predictions.tolist()
-    })
-
+    data = request.json["image"]
+    img_bytes = base64.b64decode(data.split(",")[1])
+    img = Image.open(io.BytesIO(img_bytes)).convert("L").resize((28, 28))
+    img = np.array(img) / 255.0
+    img = img.reshape(1, 28, 28, 1)
+    prediction = np.argmax(model.predict(img))
+    return jsonify({"digit": int(prediction)})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))  # Render injects $PORT
-    app.run(host="0.0.0.0", port=port, debug=False)
-
+    port = int(os.environ.get("PORT", 5000))   # Render provides $PORT
+    app.run(host="0.0.0.0", port=port)
